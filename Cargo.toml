@@ -1,0 +1,15 @@
+[package]
+name = "bench_bevy_vs_flecs"
+version = "0.1.0"
+edition = "2024"
+
+[dev-dependencies]
+criterion = "0.7.0"
+bevy_ecs = "0.16.1"
+flecs_ecs = { git = "https://github.com/Indra-db/Flecs-Rust.git", rev = "7d2ec3a" }
+shipyard = { version = "0.8.1", features = ["extended_tuple"] }
+
+[[bench]]
+name = "ecs_benches"
+path = "benches/ecs_benches.rs"
+harness = false
