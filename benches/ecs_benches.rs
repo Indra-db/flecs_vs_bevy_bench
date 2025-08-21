@@ -4,7 +4,10 @@ use ::shipyard::{IntoIter, UniqueView, View};
 use bevy_ecs::schedule::Schedule;
 use criterion::{Criterion, criterion_group, criterion_main};
 use flecs_ecs::prelude::*;
-use std::hint::black_box;
+use std::{
+    hint::black_box,
+    time::{Duration, Instant},
+};
 
 pub mod shipyard {
     use shipyard::{
@@ -405,6 +408,10 @@ pub mod flecs {
     pub fn world_with_entities(entity_count: usize) -> World {
         let world = World::new();
 
+        world
+            .component::<FlecsSingleton>()
+            .add_trait::<flecs::Singleton>();
+
         world.component::<FlecsComp1>();
         world.component::<FlecsComp2>();
         world.component::<FlecsComp3>();
@@ -440,51 +447,6 @@ pub mod flecs {
                 .set(FlecsComp14(i as u32))
                 .set(FlecsComp15(i as u32));
         }
-
-        world
-            .system::<(
-                &mut FlecsSingleton,
-                &FlecsComp1,
-                &FlecsComp2,
-                &FlecsComp3,
-                &FlecsComp4,
-                &FlecsComp5,
-                &FlecsComp6,
-                &FlecsComp7,
-                &FlecsComp8,
-                &FlecsComp9,
-                &FlecsComp10,
-                &FlecsComp11,
-                &FlecsComp12,
-                &FlecsComp13,
-                &FlecsComp14,
-                &FlecsComp15,
-            )>()
-            .term_at(0)
-            .singleton()
-            .each(
-                |(singleton, c1, c2, c3, c4, c5, c6, c7, c8, c9, c10, c11, c12, c13, c14, c15)| {
-                    singleton.0 += c1.0
-                        + c2.0
-                        + c3.0
-                        + c4.0
-                        + c5.0
-                        + c6.0
-                        + c7.0
-                        + c8.0
-                        + c9.0
-                        + c10.0
-                        + c11.0
-                        + c12.0
-                        + c13.0
-                        + c14.0
-                        + c15.0;
-
-                    black_box((
-                        singleton, c1, c2, c3, c4, c5, c6, c7, c8, c9, c10, c11, c12, c13, c14, c15,
-                    ));
-                },
-            );
 
         world
     }
@@ -555,42 +517,131 @@ fn bench_iteration_with_entities(c: &mut Criterion) {
         let mut group =
             c.benchmark_group(format!("System Iteration with {} entities", entity_count));
 
-        let shipyard_world = shipyard::world_with_entities(entity_count);
-        shipyard_world.add_unique(shipyard::ShipyardSingleton(0));
-        group.bench_function("Shipyard", |b| {
-            b.iter(|| {
-                black_box(shipyard_world.run(shipyard::iteration_system_15_components));
-            })
+        // let shipyard_world = shipyard::world_with_entities(entity_count);
+        // shipyard_world.add_unique(shipyard::ShipyardSingleton(0));
+        // group.bench_function("Shipyard", |b| {
+        //     b.iter(|| {
+        //         black_box(shipyard_world.run(shipyard::iteration_system_15_components));
+        //     })
+        // });
+        // let shipyard_res = shipyard_world
+        //     .borrow::<UniqueView<shipyard::ShipyardSingleton>>()
+        //     .unwrap();
+        // println!("Shipyard value: {}", shipyard_res.0);
+
+        let flecs_world = flecs::world_with_entities(entity_count);
+        flecs_world.set(flecs::FlecsSingleton(0));
+
+        let s = flecs_world
+            .system::<(
+                &mut flecs::FlecsSingleton,
+                &flecs::FlecsComp1,
+                &flecs::FlecsComp2,
+                &flecs::FlecsComp3,
+                &flecs::FlecsComp4,
+                &flecs::FlecsComp5,
+                &flecs::FlecsComp6,
+                &flecs::FlecsComp7,
+                &flecs::FlecsComp8,
+                &flecs::FlecsComp9,
+                &flecs::FlecsComp10,
+                &flecs::FlecsComp11,
+                &flecs::FlecsComp12,
+                &flecs::FlecsComp13,
+                &flecs::FlecsComp14,
+                &flecs::FlecsComp15,
+            )>()
+            .each(
+                |(singleton, c1, c2, c3, c4, c5, c6, c7, c8, c9, c10, c11, c12, c13, c14, c15)| {
+                    singleton.0 += c1.0
+                        + c2.0
+                        + c3.0
+                        + c4.0
+                        + c5.0
+                        + c6.0
+                        + c7.0
+                        + c8.0
+                        + c9.0
+                        + c10.0
+                        + c11.0
+                        + c12.0
+                        + c13.0
+                        + c14.0
+                        + c15.0;
+
+                    black_box((
+                        singleton, c1, c2, c3, c4, c5, c6, c7, c8, c9, c10, c11, c12, c13, c14, c15,
+                    ));
+                },
+            );
+
+        let mut flecs_iter_count = 0;
+        let mut flecs_elapsed = Duration::ZERO;
+        group.bench_function("Flecs", |b| {
+            b.iter_custom(|iters| {
+                flecs_iter_count = iters as u32;
+                let start = Instant::now();
+                for _ in 0..iters {
+                    black_box(s.run());
+                }
+                flecs_elapsed = start.elapsed();
+                flecs_elapsed
+            });
         });
-        let shipyard_res = shipyard_world
-            .borrow::<UniqueView<shipyard::ShipyardSingleton>>()
-            .unwrap();
-        println!("Shipyard value: {}", shipyard_res.0);
+
+        let flecs_res = flecs_world.cloned::<&flecs::FlecsSingleton>();
+        let flecs_value = flecs_res.0;
+        core::mem::drop(flecs_world);
 
         let mut bevy_world = bevy::world_with_entities(entity_count);
         bevy_world.insert_resource(bevy::BevySingleton(0));
         let mut schedule = Schedule::default();
         schedule.add_systems(bevy::iteration_system_15_components);
+
+        let mut bevy_iter_count = 0;
+        let mut bevy_elapsed = Duration::ZERO;
         group.bench_function("Bevy", |b| {
-            b.iter(|| {
-                black_box(schedule.run(&mut bevy_world));
-            })
+            b.iter_custom(|iters| {
+                bevy_iter_count = iters as u32;
+                let start = Instant::now();
+                for _ in 0..iters {
+                    black_box(schedule.run(&mut bevy_world));
+                }
+                bevy_elapsed = start.elapsed();
+                bevy_elapsed
+            });
         });
 
         let bevy_res = bevy_world.get_resource::<bevy::BevySingleton>().unwrap();
-        println!("Bevy value: {}", bevy_res.0);
+        let bevy_value = bevy_res.0;
+        core::mem::drop(bevy_world);
 
-        let flecs_world = flecs::world_with_entities(entity_count);
-        flecs_world.set(flecs::FlecsSingleton(0));
-
-        group.bench_function("Flecs", |b| {
-            b.iter(|| {
-                black_box(flecs_world.progress());
-            })
-        });
-
-        let flecs_res = flecs_world.cloned::<&flecs::FlecsSingleton>();
-        println!("Flecs value: {}", flecs_res.0);
+        println!(
+            "iter_count bevy: {}, flecs: {}",
+            bevy_iter_count, flecs_iter_count
+        );
+        println!(
+            "Flecs value: {} div value: {}",
+            flecs_value,
+            flecs_value / flecs_iter_count
+        );
+        println!(
+            "Bevy value: {} div value: {}",
+            bevy_value,
+            bevy_value / bevy_iter_count
+        );
+        println!(
+            "Flecs elapsed: {:?}, Bevy elapsed: {:?}",
+            flecs_elapsed, bevy_elapsed
+        );
+        println!(
+            "flecs elapsed div value: {:?}",
+            flecs_elapsed / flecs_iter_count
+        );
+        println!(
+            "bevy elapsed div value: {:?}",
+            bevy_elapsed / bevy_iter_count
+        );
 
         group.finish();
     }
@@ -761,7 +812,7 @@ criterion_group!(
     benches,
     // bench_empty_system_overhead_15_components,
     // bench_empty_system_overhead_5_components,
-    bench_iteration_with_entities_queries,
+    //bench_iteration_with_entities_queries,
     bench_iteration_with_entities,
 );
 criterion_main!(benches);
